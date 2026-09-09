@@ -1,0 +1,31 @@
+{
+  "name": "bootcamp_2026_s3_vibe_coding_backend",
+  "version": "1.0.0",
+  "description": "NFTMarket event listener backend",
+  "type": "module",
+  "main": "dist/nftMarket/watchNFTMarket.js",
+  "scripts": {
+    "watchNFTMarket": "tsc && node dist/nftMarket/watchNFTMarket.js",
+    "tradeNFTMarket": "tsc && node dist/nftMarket/tradeNFTMarket.js",
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lbc-2026s3/bootcamp_2026_s3_vibe_coding_backend.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lbc-2026s3/bootcamp_2026_s3_vibe_coding_backend/issues"
+  },
+  "homepage": "https://github.com/lbc-2026s3/bootcamp_2026_s3_vibe_coding_backend#readme",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "viem": "^2.56.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "typescript": "^7.0.2"
+  }
+}
