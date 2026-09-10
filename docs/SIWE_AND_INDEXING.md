@@ -152,11 +152,106 @@ Body: { message, signature, sessionId }
 
 1. 校验 `sessionId` 对应 nonce 未过期
 2. `SiweMessage.verify({ signature, nonce })` 验签
-3. 成功后签发 **base64url 编码的 JSON token**，包含：
+3. 成功后签发 **base64url 编码的 JSON token**（demo 实现，见下文「Demo token 与生产环境 JWT」），包含：
    - `address`（小写）
    - `chainId`
    - `exp`（24 小时过期）
 4. nonce **一次性使用**，验证后立即删除
+
+### Demo token 与生产环境 JWT
+
+当前 `auth.ts` 中的 token 是 **base64url(JSON)**，没有密码学签名。任何人都可以自行构造：
+
+```json
+{ "address": "0x任意地址", "chainId": 31337, "exp": 9999999999999 }
+```
+
+再 `base64url` 编码后当作 Bearer token 发送，服务端无法区分真伪——只能解码并检查 `exp` 是否过期。
+
+生产环境应改用 **JWT（JSON Web Token）+ 密钥签名**，保证「只有持有密钥的服务端才能签发，且 token 被篡改后验签失败」。
+
+#### 生产环境 JWT 流程
+
+```mermaid
+sequenceDiagram
+  participant FE as 前端
+  participant API as Express API
+  participant Key as JWT 密钥/私钥
+
+  Note over API,Key: 启动时从环境变量加载 JWT_SECRET 或 RSA 私钥
+
+  FE->>API: POST /api/auth/verify（SIWE 验签已通过）
+  API->>Key: jwt.sign(payload, secret, { expiresIn: "24h" })
+  Key-->>API: 签名的 JWT 字符串
+  API-->>FE: { token: "eyJhbG..." }
+
+  FE->>API: GET /api/transfers/:address<br/>Authorization: Bearer eyJhbG...
+  API->>Key: jwt.verify(token, secret)
+  Key-->>API: payload（address, chainId, exp）或验签失败
+  API-->>FE: 200 或 401
+```
+
+**Step 1 — 配置密钥（仅服务端持有）**
+
+| 方案 | 算法 | 密钥 | 适用场景 |
+|------|------|------|----------|
+| 对称 | HS256 | `JWT_SECRET`（长随机字符串） | 单体后端，实现简单 |
+| 非对称 | RS256 / ES256 | RSA/EC 私钥签发、公钥验签 | 多服务、微服务，公钥可分发 |
+
+```bash
+# .env 示例（对称）
+JWT_SECRET=your-256-bit-random-secret-do-not-commit
+JWT_EXPIRES_IN=24h
+```
+
+**Step 2 — SIWE 验签成功后签发 JWT**
+
+伪代码（可用 [`jose`](https://github.com/panva/jose) 或 [`jsonwebtoken`](https://github.com/auth0/node-jsonwebtoken)）：
+
+```typescript
+import jwt from "jsonwebtoken";
+
+const token = jwt.sign(
+  {
+    address: siweMessage.address.toLowerCase(),
+    chainId: siweMessage.chainId,
+  },
+  process.env.JWT_SECRET!,
+  { expiresIn: process.env.JWT_EXPIRES_IN ?? "24h" },
+);
+```
+
+JWT 由三部分组成：`header.payload.signature`。`signature` 由服务端密钥生成，客户端**无法伪造**有效签名。
+
+**Step 3 — 受保护接口验签**
+
+`requireAuth` 中不再 `JSON.parse(base64url(...))`，改为：
+
+```typescript
+const payload = jwt.verify(token, process.env.JWT_SECRET!) as AuthPayload;
+// 验签失败（篡改、过期、密钥不匹配）会抛错 → 返回 401
+```
+
+**Step 4 — 客户端无变化**
+
+前端仍把 token 存 `localStorage`，请求时带 `Authorization: Bearer <token>`。换 JWT 后客户端逻辑基本不变，只是 token 字符串格式从裸 JSON 变为标准 JWT。
+
+#### Demo vs 生产对比
+
+| | Demo（当前） | 生产 JWT |
+|---|-------------|----------|
+| 格式 | base64url(JSON) | `header.payload.signature` |
+| 防伪造 | ❌ 任何人可构造 | ✅ 需服务端密钥才能签发 |
+| 过期校验 | 手动比较 `exp` | `jwt.verify` 自动校验 |
+| 密钥 | 无 | `JWT_SECRET` 或 RSA 密钥对 |
+| 撤销/登出 | 仅等 exp 过期 | 可加快过期、黑名单、refresh token |
+
+#### 可选增强（生产常见）
+
+1. **Refresh token** — access token 短有效期（如 15 分钟）+ refresh token 换新，降低泄露风险
+2. **HttpOnly Cookie** — 避免 XSS 直接读 `localStorage` 中的 token（需配合 CSRF 防护）
+3. **密钥轮换** — 定期更换 `JWT_SECRET`，旧 token 自然失效
+4. **速率限制** — 对 `/api/auth/nonce`、`/api/auth/verify` 限流，防暴力尝试
 
 ### Step 4：受保护接口
 

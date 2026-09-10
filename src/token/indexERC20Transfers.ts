@@ -1,3 +1,9 @@
+/**
+ * MyTokenERC1363 转账索引器
+ *
+ * 独立进程：先回填历史 Transfer 事件，再 WebSocket 实时监听，写入 SQLite。
+ * 启动：npm run indexERC20
+ */
 import {
   createPublicClient,
   getAddress,
@@ -12,10 +18,12 @@ import { createTransport, httpRpcUrl, resolveChain } from "../lib/chain.js";
 
 dotenv.config();
 
+/** getLogs 过滤用；与 ERC20 Transfer 事件签名一致 */
 const TRANSFER_EVENT = parseAbiItem(
   "event Transfer(address indexed from, address indexed to, uint256 value)",
 );
 
+/** sync_state 表中记录已索引到的最新区块，重启后从此处 +1 续扫 */
 const SYNC_LAST_BLOCK_KEY = "last_indexed_block";
 
 type TransferArgs = {
@@ -30,10 +38,15 @@ function requireEnv(name: string): string {
   return value;
 }
 
+/** 主键：同一笔 tx 可能有多条 log，用 logIndex 区分 */
 function transferId(txHash: string, logIndex: number): string {
   return `${txHash}-${logIndex}`;
 }
 
+/**
+ * 将一批 Transfer 日志写入 SQLite。
+ * 回填与实时监听共用；INSERT OR IGNORE 保证幂等。
+ */
 async function persistLogs(
   db: ReturnType<typeof openDatabase>,
   logs: Log[],
@@ -46,6 +59,7 @@ async function persistLogs(
     const args = (log as unknown as { args: TransferArgs }).args;
     if (!args.from || !args.to || args.value === undefined) continue;
 
+    // 事件本身不含 timestamp，需额外查区块头
     const block = await client.getBlock({ blockNumber: log.blockNumber! });
     const ok = insertTransfer(db, {
       id: transferId(log.transactionHash!, log.logIndex!),
@@ -55,7 +69,7 @@ async function persistLogs(
       block_timestamp: Number(block.timestamp),
       from_address: getAddress(args.from).toLowerCase(),
       to_address: getAddress(args.to).toLowerCase(),
-      value: args.value.toString(),
+      value: args.value.toString(), // bigint 存字符串，避免 JS 精度丢失
       token_address: tokenAddress.toLowerCase(),
     });
     if (ok) inserted += 1;
@@ -64,6 +78,10 @@ async function persistLogs(
   return inserted;
 }
 
+/**
+ * 历史回填：从 START_BLOCK（或上次断点）扫到链头。
+ * 按 2000 区块分批 getLogs，避免单次 RPC 范围过大超时。
+ */
 async function backfill(
   db: ReturnType<typeof openDatabase>,
   client: ReturnType<typeof createPublicClient>,
@@ -110,6 +128,8 @@ const main = async () => {
   const chain = resolveChain(chainId);
 
   const db = openDatabase(dbPath);
+
+  // 回填 / getBlock 走 HTTP，稳定且兼容 ws URL 自动降级
   const httpClient = createPublicClient({
     chain,
     transport: createTransport(httpRpcUrl(rpcUrl)),
@@ -122,6 +142,7 @@ const main = async () => {
 
   await backfill(db, httpClient, tokenAddress, startBlock);
 
+  // 实时监听优先用原始 RPC（ws），推送比轮询更及时
   const watchClient = createPublicClient({
     chain,
     transport: createTransport(rpcUrl),
