@@ -7,7 +7,9 @@
   "scripts": {
     "watchNFTMarket": "tsc && node dist/nftMarket/watchNFTMarket.js",
     "tradeNFTMarket": "tsc && node dist/nftMarket/tradeNFTMarket.js",
-    "build": "tsc"
+    "build": "tsc",
+    "indexERC20": "tsc && node dist/token/indexERC20Transfers.js",
+    "server": "tsc && node dist/api/server.js"
   },
   "repository": {
     "type": "git",
@@ -21,10 +23,17 @@
   },
   "homepage": "https://github.com/lbc-2026s3/bootcamp_2026_s3_vibe_coding_backend#readme",
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "siwe": "^3.0.0",
     "viem": "^2.56.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/node": "^26.5.0",
     "typescript": "^7.0.2"
   }
