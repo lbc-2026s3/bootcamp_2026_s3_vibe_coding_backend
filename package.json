@@ -9,7 +9,8 @@
     "tradeNFTMarket": "tsc && node dist/nftMarket/tradeNFTMarket.js",
     "build": "tsc",
     "indexERC20": "tsc && node dist/token/indexERC20Transfers.js",
-    "server": "tsc && node dist/api/server.js"
+    "server": "tsc && node dist/api/server.js",
+    "wallet": "tsc && node dist/wallet/cliWallet.js"
   },
   "repository": {
     "type": "git",

@@ -47,6 +47,28 @@ npm run server
 
 数据保存在 `DATABASE_PATH`（默认 `./data/transfers.db`）。
 
+## 命令行钱包（EIP-1559）
+
+从 `.env` 加载 `PRIVATE_KEY`、`TOKEN_ADDRESS`、`RPC_URL`、`CHAIN_ID`，按参数构建并发送交易。默认 Anvil（`CHAIN_ID=31337`）。
+
+先启动 anvil 并部署 MyTokenERC1363：
+
+```bash
+anvil
+# foundry 目录
+forge script script/MyTokenERC1363.s.sol --rpc-url http://127.0.0.1:8545 --broadcast
+```
+
+将部署地址写入 `.env` 的 `TOKEN_ADDRESS`，然后：
+
+```bash
+# ETH 转账
+npm run wallet -- eth 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 0.1
+
+# ERC20（MyTokenERC1363）转账
+npm run wallet -- erc20 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 100
+```
+
 ## NFTMarket 演示
 
 1. 启动 `anvil`
