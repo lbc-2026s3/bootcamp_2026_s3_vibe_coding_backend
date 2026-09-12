@@ -10,7 +10,8 @@
     "build": "tsc",
     "indexERC20": "tsc && node dist/token/indexERC20Transfers.js",
     "server": "tsc && node dist/api/server.js",
-    "wallet": "tsc && node dist/wallet/cliWallet.js"
+    "wallet": "tsc && node dist/wallet/cliWallet.js",
+    "signPermit": "tsc && node dist/wallet/signPermit2612.js"
   },
   "repository": {
     "type": "git",

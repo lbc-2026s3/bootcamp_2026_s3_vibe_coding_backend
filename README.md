@@ -69,6 +69,25 @@ npm run wallet -- eth 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 0.1
 npm run wallet -- erc20 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 100
 ```
 
+## 离线 EIP-2612 Permit 签名（MyTokenERC2612Permit）
+
+不发链上交易，用 owner 私钥签 EIP-712 Permit，输出 `v/r/s`，可供 `token.permit` 或 `TokenBankERC2612.permitDeposit` 使用。
+
+```bash
+# foundry 目录部署 token
+forge script script/MyTokenERC2612Permit.s.sol --rpc-url http://127.0.0.1:8545 --broadcast
+```
+
+在 `.env` 填写 `TOKEN2612_ADDRESS`，然后：
+
+```bash
+# 读链上 nonce 后离线签名（spender, amount, 可选 deadline unix 秒）
+npm run signPermit -- 0xTokenBankAddress 100
+
+# 完全离线：手动指定 nonce，不访问 RPC
+npm run signPermit -- 0xTokenBankAddress 100 --nonce 0
+```
+
 ## NFTMarket 演示
 
 1. 启动 `anvil`
