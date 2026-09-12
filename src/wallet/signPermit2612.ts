@@ -5,9 +5,9 @@
  * 用法:
  *   npm run signPermit -- <spender> <amount> [deadline]
  *
- * amount 为人可读 TOKEN 数量（默认 18 位小数）。
+ * amount 为人可读 TOKEN 数量。
  * deadline 为 unix 秒；缺省为当前时间 + 1 天。
- * 可用 --nonce <n> 跳过链上读取（完全离线）。
+ * 可用 --nonce <n> 跳过链上读取（完全离线，此时可不设 RPC_URL）。
  */
 import {
   createPublicClient,
@@ -26,10 +26,6 @@ import { createTransport, httpRpcUrl, resolveChain } from "../lib/chain.js";
 dotenv.config();
 
 const MyTokenAbi = MyTokenAbiJson as Abi;
-
-/** Anvil account#0 — 仅本地缺省私钥时回退 */
-const ANVIL_ACCOUNT0_KEY =
-  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as Hex;
 
 /** OpenZeppelin ERC20Permit 构造函数传入的 EIP-712 name / version */
 const PERMIT_DOMAIN_NAME = "MyToken2612";
@@ -58,12 +54,12 @@ function printUsage(): void {
   deadline  过期 unix 秒（可选，默认 now+86400）
   --nonce   手动指定 nonce（可选；不传则从链上读 nonces(owner)）
 
-.env:
-  PRIVATE_KEY           owner 私钥（可缺省，本地回退 Anvil #0）
-  TOKEN2612_ADDRESS     MyTokenERC2612Permit 合约地址（必需）
-  RPC_URL               默认 http://127.0.0.1:8545（提供 --nonce 时可省略）
-  CHAIN_ID              默认 31337（Anvil）
-  TOKEN_DECIMALS        默认 18
+.env（均必需，无默认值）:
+  PRIVATE_KEY           owner 私钥
+  TOKEN2612_ADDRESS     MyTokenERC2612Permit 合约地址
+  CHAIN_ID              如 31337 / 11155111
+  TOKEN_DECIMALS        如 18
+  RPC_URL               读链上 nonce 时必需（使用 --nonce 时可省略）
 `);
 }
 
@@ -75,16 +71,38 @@ function requireArg(name: string, value: string | undefined): string {
   return value;
 }
 
-function loadPrivateKey(chainId: number): Hex {
-  const fromEnv = process.env.PRIVATE_KEY ?? process.env.SELLER_PRIVATE_KEY;
-  const key = fromEnv ?? (chainId === 31337 ? ANVIL_ACCOUNT0_KEY : undefined);
-  if (!key) {
-    throw new Error("请在 .env 中设置 PRIVATE_KEY（非 Anvil 网络不可省略）");
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`请在 .env 中设置 ${name}`);
   }
+  return value;
+}
+
+function loadPrivateKey(): Hex {
+  const key = requireEnv("PRIVATE_KEY");
   if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
     throw new Error("PRIVATE_KEY 格式无效（需要 0x + 64 位十六进制）");
   }
   return key as Hex;
+}
+
+function loadChainId(): number {
+  const raw = requireEnv("CHAIN_ID");
+  const chainId = Number(raw);
+  if (!Number.isInteger(chainId) || chainId <= 0) {
+    throw new Error(`CHAIN_ID 无效: ${raw}`);
+  }
+  return chainId;
+}
+
+function loadTokenDecimals(): number {
+  const raw = requireEnv("TOKEN_DECIMALS");
+  const decimals = Number(raw);
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 36) {
+    throw new Error(`TOKEN_DECIMALS 无效: ${raw}`);
+  }
+  return decimals;
 }
 
 function parseAmount(amountStr: string, decimals: number): bigint {
@@ -144,25 +162,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  const tokenAddressRaw = process.env.TOKEN2612_ADDRESS;
-  if (!tokenAddressRaw) {
-    throw new Error(
-      "请在 .env 中设置 TOKEN2612_ADDRESS（MyTokenERC2612Permit 部署地址）",
-    );
-  }
-
   const spender = getAddress(requireArg("spender", spenderRaw));
-  const token = getAddress(tokenAddressRaw);
-  const decimalsRaw = process.env.TOKEN_DECIMALS ?? "18";
-  const decimals = Number(decimalsRaw);
-  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 36) {
-    throw new Error(`TOKEN_DECIMALS 无效: ${decimalsRaw}`);
-  }
-
+  const token = getAddress(requireEnv("TOKEN2612_ADDRESS"));
+  const decimals = loadTokenDecimals();
   const value = parseAmount(requireArg("amount", amountRaw), decimals);
-  const chainId = Number(process.env.CHAIN_ID ?? "31337");
+  const chainId = loadChainId();
   const chain = resolveChain(chainId);
-  const privateKey = loadPrivateKey(chainId);
+  const privateKey = loadPrivateKey();
   const account = privateKeyToAccount(privateKey);
   const owner = account.address;
 
@@ -186,12 +192,23 @@ async function main(): Promise<void> {
   if (nonceOverride !== undefined) {
     nonce = nonceOverride;
     console.log("模式: 完全离线（使用 --nonce，不读链）");
+    console.log(
+      "提示: 完全离线时请确认 CHAIN_ID / PRIVATE_KEY 与上链网络、msg.sender 一致",
+    );
   } else {
-    const rpcUrl = httpRpcUrl(process.env.RPC_URL ?? "http://127.0.0.1:8545");
+    const rpcUrl = httpRpcUrl(requireEnv("RPC_URL"));
     const publicClient = createPublicClient({
       chain,
       transport: createTransport(rpcUrl),
     });
+
+    const rpcChainId = await publicClient.getChainId();
+    if (rpcChainId !== chainId) {
+      throw new Error(
+        `CHAIN_ID=${chainId} 与 RPC 实际 chainId=${rpcChainId} 不一致。` +
+          `Sepolia 请设 CHAIN_ID=11155111，且 PRIVATE_KEY 必须是上链用的同一把钥匙`,
+      );
+    }
 
     const [onchainNonce, onchainName] = await Promise.all([
       publicClient.readContract({
@@ -269,7 +286,7 @@ async function main(): Promise<void> {
   console.log(
     `cast 调用 permitDeposit 示例:\n` +
       `  cast send <BANK> "permitDeposit(uint256,uint256,uint8,bytes32,bytes32)" ` +
-      `${value.toString()} ${deadline.toString()} ${vNum} ${r} ${s} --private-key <OWNER_KEY>`,
+      `${value.toString()} ${deadline.toString()} ${vNum} ${r} ${s} --private-key <OWNER_KEY> --rpc-url <RPC_URL>`,
   );
 }
 
