@@ -115,6 +115,29 @@ npm run signPermit2 -- 0xTokenBankPermit2Address 100 1893456000
 
 上链前 owner 需已对 Permit2 做 ERC20 `approve`（通常一次性 max）。签名中的 spender 必须是银行地址，且用同一把 `PRIVATE_KEY` 调用 `depositWithPermit2`。
 
+## 预测下一次 CREATE 合约地址
+
+`CREATE`（opcode `0xF0`）部署地址只由发送方与其 nonce 决定：
+
+```
+address = keccak256(RLP([sender, nonce]))[12:]
+```
+
+nonce=0 时 RLP 编码为空字节串 `0x80`（不是 `0x00`）。读链时用 `eth_getTransactionCount` 作为即将用于 CREATE 的 nonce。参考 [evm.codes CREATE](https://www.evm.codes/?fork=osaka#f0)。
+
+```bash
+# 从 RPC 读 deployer 当前 nonce，预测下一个合约地址
+npm run predictCreate -- 0xYourDeployerAddress
+
+# 完全离线：手动指定 nonce
+npm run predictCreate -- 0xYourDeployerAddress --nonce 7
+
+# 连续预测接下来 5 次 CREATE 地址
+npm run predictCreate -- 0xYourDeployerAddress --count 5
+```
+
+`.env` 的 `RPC_URL` / `CHAIN_ID` 与钱包脚本相同；使用 `--nonce` 时可不连 RPC。这与 `CREATE2` 无关（`CREATE2` 还依赖 salt 与 init code hash）。
+
 ## NFTMarket 演示
 
 1. 启动 `anvil`

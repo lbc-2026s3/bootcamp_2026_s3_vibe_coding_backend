@@ -12,7 +12,8 @@
     "server": "tsc && node dist/api/server.js",
     "wallet": "tsc && node dist/wallet/cliWallet.js",
     "signPermit": "tsc && node dist/wallet/signPermit2612.js",
-    "signPermit2": "tsc && node dist/wallet/signPermit2.js"
+    "signPermit2": "tsc && node dist/wallet/signPermit2.js",
+    "predictCreate": "tsc && node dist/wallet/predictCreateAddress.js"
   },
   "repository": {
     "type": "git",
