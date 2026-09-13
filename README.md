@@ -88,6 +88,33 @@ npm run signPermit -- 0xTokenBankAddress 100
 npm run signPermit -- 0xTokenBankAddress 100 --nonce 0
 ```
 
+## 离线 Permit2 签名（TokenBankPermit2）
+
+不发链上交易，用 owner 私钥签 Uniswap Permit2 `PermitTransferFrom`，输出 `signature`，可供 `TokenBankPermit2.depositWithPermit2` 使用。
+
+```bash
+# foundry 目录部署 MyTokenV1 + TokenBankPermit2
+forge script script/TokenBankPermit2.s.sol --rpc-url <SEPOLIA_RPC> --broadcast
+```
+
+在 `.env` 填写（均必需，脚本无默认值）：
+
+- `PRIVATE_KEY`
+- `PERMIT2_ADDRESS`（Sepolia: `0x000000000022D473030F116dDEE9F6B43aC78BA3`）
+- `PERMIT2_TOKEN_ADDRESS`（部署得到的 MyTokenV1）
+- `CHAIN_ID=11155111`
+- `TOKEN_DECIMALS=18`
+
+```bash
+# spender=TokenBankPermit2, amount, 可选 deadline；nonce 自动生成
+npm run signPermit2 -- 0xTokenBankPermit2Address 100
+
+# 指定 deadline（unix 秒）
+npm run signPermit2 -- 0xTokenBankPermit2Address 100 1893456000
+```
+
+上链前 owner 需已对 Permit2 做 ERC20 `approve`（通常一次性 max）。签名中的 spender 必须是银行地址，且用同一把 `PRIVATE_KEY` 调用 `depositWithPermit2`。
+
 ## NFTMarket 演示
 
 1. 启动 `anvil`
