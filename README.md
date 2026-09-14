@@ -115,6 +115,26 @@ npm run signPermit2 -- 0xTokenBankPermit2Address 100 1893456000
 
 上链前 owner 需已对 Permit2 做 ERC20 `approve`（通常一次性 max）。签名中的 spender 必须是银行地址，且用同一把 `PRIVATE_KEY` 调用 `depositWithPermit2`。
 
+## EIP-7702 原子存款（approve + TokenBank.deposit）
+
+一条 type `0x04` 交易完成 `MyTokenV1.approve(TokenBankV2, amount)` 和 `TokenBankV2.deposit(amount)`。EOA 委托到 Sepolia 上已部署的 MetaMask [`EIP7702StatelessDeleGator`](https://sepolia.etherscan.io/address/0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B)（`0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B`），再对自己的地址调用 ERC-7579/7821 `execute(batchMode, executions)`。两次 inner call 的 `msg.sender` 都是该 EOA。
+
+在 `.env` 填写：
+
+- `PRIVATE_KEY`
+- `RPC_URL`
+- `CHAIN_ID=11155111`
+- `MY_TOKEN_V1_ADDRESS`
+- `TOKEN_BANK_V2_ADDRESS`
+- `SIMPLE_DELEGATE_ADDRESS`（可选；缺省即上述 MetaMask 实现）
+- `TOKEN_DECIMALS`（可选；默认 18）
+
+```bash
+npm run deposit7702 -- 100
+```
+
+EOA 自己发交易时会带 `executor: "self"` 的 authorization。若该 EOA 已经委托到同一实现，脚本会省略 `authorizationList`，只调 `execute`。委托会留在 EOA 上（`0xef0100 || delegate`）；`execute` 仅允许 EOA 自己或 ERC-4337 EntryPoint 调用。
+
 ## 预测下一次 CREATE 合约地址
 
 `CREATE`（opcode `0xF0`）部署地址只由发送方与其 nonce 决定：

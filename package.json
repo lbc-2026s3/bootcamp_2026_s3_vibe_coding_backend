@@ -13,7 +13,8 @@
     "wallet": "tsc && node dist/wallet/cliWallet.js",
     "signPermit": "tsc && node dist/wallet/signPermit2612.js",
     "signPermit2": "tsc && node dist/wallet/signPermit2.js",
-    "predictCreate": "tsc && node dist/wallet/predictCreateAddress.js"
+    "predictCreate": "tsc && node dist/wallet/predictCreateAddress.js",
+    "deposit7702": "tsc && node dist/wallet/depositTokenBank7702.js"
   },
   "repository": {
     "type": "git",
