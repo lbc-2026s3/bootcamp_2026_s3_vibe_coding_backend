@@ -1,8 +1,14 @@
 /**
  * 用一条 EIP-7702 交易，把 MyTokenV1.approve 与 TokenBankV2.deposit 原子执行。
  *
- * EOA 委托到 MetaMask EIP7702StatelessDeleGator（ERC-7579/7821 execute），
- * 再对自己的地址调用 execute(batchMode, executions)。
+ * 为什么需要 7702：TokenBank.deposit 走 transferFrom(msg.sender, ...)，
+ * approve 和 deposit 的 msg.sender 都必须是存款人 EOA。普通两笔交易做不到原子性；
+ * 7702 让 EOA 临时（实际会一直保留到被清掉）执行智能合约代码，一次 execute 里连续两笔 inner call。
+ *
+ * 流程：
+ *   1. 签 authorization，把 EOA 委托到 MetaMask EIP7702StatelessDeleGator
+ *   2. 发 type 0x04 交易，to = EOA 自己，calldata = execute(batchMode, [approve, deposit])
+ *   3. 执行时 address(this) = EOA，所以 token.approve / bank.deposit 看到的 msg.sender 都是 EOA
  *
  * 用法:
  *   npm run deposit7702 -- <amount>
@@ -31,7 +37,10 @@ const DEFAULT_DELEGATE = getAddress(
   "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B",
 );
 
-/** ERC-7579 CALLTYPE_BATCH + EXECTYPE_DEFAULT；viem ERC-7821 default mode */
+/**
+ * ERC-7579 ModeCode：第 1 字节 CALLTYPE_BATCH=0x01，第 2 字节 EXECTYPE_DEFAULT=0x00。
+ * 与 viem ERC-7821 `executionMode.default` 相同。
+ */
 const BATCH_MODE =
   "0x0100000000000000000000000000000000000000000000000000000000000000" as Hex;
 
@@ -47,6 +56,7 @@ const tokenBankAbi = parseAbi([
 ]);
 
 const delegatorAbi = parseAbi([
+  // onlyEntryPointOrSelf：外人不能对已委托的 EOA 直接调 execute
   "function execute(bytes32 mode, bytes executionCalldata) payable",
   "function supportsExecutionMode(bytes32 mode) view returns (bool)",
 ]);
@@ -121,6 +131,7 @@ function parseAmount(amountStr: string, decimals: number): bigint {
   }
 }
 
+/** 编码 Delegator.execute 的第二参数：abi.encode(Execution[])，即 ERC-7579 batch calldata。 */
 function encodeBatchExecutions(
   token: Address,
   bank: Address,
@@ -137,6 +148,7 @@ function encodeBatchExecutions(
     args: [amount],
   });
 
+  // 字段名 callData 对应合约 Execution；按 (address,uint256,bytes) 位置编码，与 viem 的 data 等价。
   return encodeAbiParameters(
     [
       {
@@ -201,6 +213,7 @@ async function main(): Promise<void> {
     );
   }
 
+  // 读实现合约本身（尚未委托时 EOA 还没有这段代码）
   let supportsBatch: boolean;
   try {
     supportsBatch = await publicClient.readContract({
@@ -240,6 +253,7 @@ async function main(): Promise<void> {
       functionName: "balances",
       args: [account.address],
     }),
+    // 7702 委托设计符：code = 0xef0100 || delegate；无委托则 undefined
     publicClient.getDelegation({ address: account.address }),
   ]);
 
@@ -261,6 +275,7 @@ async function main(): Promise<void> {
     );
   }
 
+  // 已委托到同一实现则不必再带 authorizationList，否则会无谓消耗 authority nonce
   const alreadyDelegated = currentDelegate === delegate;
   const executionCalldata = encodeBatchExecutions(token, bank, amount);
 
@@ -281,6 +296,8 @@ async function main(): Promise<void> {
       (alreadyDelegated ? "（已是目标实现，本笔不再带 authorizationList）" : ""),
   );
 
+  // EOA 自己发 tx 时必须 executor:"self"：authorization.nonce = tx.nonce + 1
+  // （7702 先消耗 tx nonce，再处理 authorization list）
   const authorization = alreadyDelegated
     ? undefined
     : await walletClient.signAuthorization({
@@ -290,13 +307,16 @@ async function main(): Promise<void> {
       });
   if (authorization) {
     console.log(
-      `已签名 EIP-7702 authorization: chainId=${authorization.chainId} nonce=${authorization.nonce}`,
+      `已本地签名 EIP-7702 authorization（未发交易，无 tx hash）: chainId=${authorization.chainId} nonce=${authorization.nonce} address=${authorization.address}`,
     );
+  } else {
+    console.log("跳过 signAuthorization：EOA 已委托到目标实现，无新 authorization，也无额外交易");
   }
 
+  // to 必须是 EOA：委托生效后，EOA 上跑的是 Delegator.execute
   const hash = await walletClient.writeContract({
     abi: delegatorAbi,
-    address: account.address,
+    address: account.address, // EOA address
     functionName: "execute",
     args: [BATCH_MODE, executionCalldata],
     ...(authorization ? { authorizationList: [authorization] } : {}),
