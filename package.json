@@ -15,6 +15,7 @@
     "signPermit": "tsc && node dist/wallet/signPermit2612.js",
     "signPermit2": "tsc && node dist/wallet/signPermit2.js",
     "predictCreate": "tsc && node dist/wallet/predictCreateAddress.js",
+    "readStorage": "tsc && node dist/storage/readContractStorage.js",
     "deposit7702": "tsc && node dist/wallet/depositTokenBank7702SelfSend.js",
     "deposit7702:selfSend": "tsc && node dist/wallet/depositTokenBank7702SelfSend.js",
     "deposit7702:relayerSend": "tsc && node dist/wallet/depositTokenBank7702RelayerSend.js"
